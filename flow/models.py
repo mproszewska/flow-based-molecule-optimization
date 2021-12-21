@@ -23,7 +23,7 @@ class Coupling_layer_NICE(nn.Module):
 
     def forward(self, x, reverse=False):
         if reverse:
-            x = z.view(z.shape[0], -1)
+            x = x.view(x.shape[0], -1)
             h1, h2 = x * self.mask, x * (1 - self.mask)
 
             m = self.a(h1) * (1 - self.mask)
@@ -31,7 +31,7 @@ class Coupling_layer_NICE(nn.Module):
 
             x = h1 + h2
 
-            return x.view(z.shape)
+            return x.view(x.shape)
 
         else:
             z = x.view(x.shape[0], -1)
@@ -72,7 +72,7 @@ class NICE(nn.Module):
 
     def forward(self, x, reverse=False):
         if reverse:
-            z = z.view(-1, self.input_dim).float()
+            z = x.view(-1, self.input_dim).float()
             for layer in self.layers[::-1]:
                 z = layer(z, reverse=True)
             return z
