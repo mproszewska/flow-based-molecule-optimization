@@ -142,10 +142,9 @@ class FlowDataset(Dataset):
     def __init__(self, mol_path, property_path, vocab, model, save_path, load=False):
         sufix = property_path.split("/")[-2] if property_path.endswith("/") else property_path.split("/")[-1]
         if load:
-            self.W_tree = torch.load(f"{save_path}/W_tree_{sufix}.pt")
-            self.W_mol = torch.load(f"{save_path}/W_mol_{sufix}.pt")
-            self.A = torch.load(f"{save_path}/A_{sufix}.pt")
-            print(self.W_tree.shape)
+            self.W_tree = torch.load(f"{save_path}/W_tree_{sufix}.pt").float()
+            self.W_mol = torch.load(f"{save_path}/W_mol_{sufix}.pt").float()
+            self.A = torch.load(f"{save_path}/A_{sufix}.pt").float()
         else:
             W_tree, W_mol, A = list(), list(), list()
             loader = MolTreeWithPropertyFolder(mol_path, property_path, vocab, batch_size=32)

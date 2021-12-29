@@ -13,7 +13,25 @@ def naive_loss(z, logdet, mu, sigma):
     logp_a = dist_a.log_prob(z_a)
     logp_rest = dist_rest.log_prob(z_rest)
     logpz = logp_a.sum(-1, keepdim=True) + logp_rest.sum(-1, keepdim=True)
+    logpz = (logpz + logdet).mean()
     return (
-        -(logpz + logdet).mean(),
-        {"-logp_a": -logp_a.mean(), "MSE": torch.mean((z_a - mu) ** 2)},
+        -logpz,
+        {
+            "-logpz": -logpz,
+            "-logp_a": -logp_a.mean(),
+            "MSE": torch.mean((z_a - mu) ** 2),
+            "sigma": torch.tensor(sigma)
+        },
+    )
+
+
+def N01_loss(z, logdet):
+    device = z.device
+    dist = Normal(torch.tensor([0.0]).to(device), torch.tensor([1.0]).to(device))
+    logpz = dist.log_prob(z)
+    logpz = logpz.sum(-1, keepdim=True)
+    logpz = (logpz + logdet).mean()
+    return (
+        -logpz,
+        {"-logpz": -logpz},
     )
