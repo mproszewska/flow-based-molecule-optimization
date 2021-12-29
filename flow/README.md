@@ -16,7 +16,7 @@ python flow_train.py  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path
 ### CNF training
 To train CNF for logP optimization, run
 ```
-python flow_train.py  --jtvae ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --property_path ../data/zinc250k/logP/ --vocab ../data/zinc250k/vocab.txt  --save_dir save_cnf_logP  --flow_type CNF --epochs 10 --flow_sigma_decay 0.8
+python flow_train.py  --jtvae ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --property_path ../data/zinc250k/logP/ --vocab ../data/zinc250k/vocab.txt  --save_dir save_cnf_logP_b1  --flow_type CNF --epochs 10 --flow_sigma_decay 0.8 --flow_n_blocks 1
 ```
 
 ## Optimization (modification)

@@ -59,12 +59,12 @@ def evaluate(test_dataloader, flow, flow_type, conditional, loss_fn, sigma):
     return test_steps, test_metrics
 
 
-def main_flow_train(
+def main_flow_train( 
+    jtvae_path,
     mol_path,
     property_path,
     vocab,
     save_dir,
-    jtvae_path,
     flow_type,
     conditional=False,
     hidden_size=450,
@@ -224,11 +224,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("--jtvae_path", type=str, required=True)
     parser.add_argument("--mol_path", required=True)
     parser.add_argument("--property_path", required=True)
     parser.add_argument("--vocab", required=True)
     parser.add_argument("--save_dir", required=True)
-    parser.add_argument("--jtvae_path", type=str, required=True)
 
     parser.add_argument(
         "--flow_type",
@@ -255,12 +255,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
-    main_flow_train(
+    main_flow_train( 
+        args.jtvae_path,
         args.mol_path,
         args.property_path,
         args.vocab,
         args.save_dir,
-        args.jtvae_path,
         args.flow_type,
         args.conditional,
         args.hidden_size,
