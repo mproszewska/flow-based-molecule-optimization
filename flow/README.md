@@ -10,7 +10,13 @@ Download zinc250k from [here](https://drive.google.com/file/d/1qr32WASlIIVIbTm4x
 ## Flow training
 To train flow for logP optimization, run
 ```
-python flow_train.py  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --property_path ../data/zinc250k/logP/  --save_dir save_logP 
+python flow_train.py  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --property_path ../data/zinc250k/logP/  --save_dir save_logP --flow_type NICE 
+```
+
+### CNF training
+To train CNF for logP optimization, run
+```
+python flow_train.py  --jtvae ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --property_path ../data/zinc250k/logP/ --vocab ../data/zinc250k/vocab.txt  --save_dir save_cnf_logP  --flow_type CNF --epochs 10 --flow_sigma_decay 0.8
 ```
 
 ## Optimization (modification)
