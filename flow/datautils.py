@@ -7,6 +7,7 @@ import pickle as pickle
 import os, random
 from tqdm import tqdm
 
+
 class MolTreeWithPropertyFolder(object):
     def __init__(
         self,
@@ -24,7 +25,7 @@ class MolTreeWithPropertyFolder(object):
         self.mol_folder = mol_folder
         self.property_folder = property_folder
         self.data_files = [fn for fn in os.listdir(mol_folder)]
-        self.data_files.sort(key=lambda k: int(k[:-4].split("-")[-1]) )
+        self.data_files.sort(key=lambda k: int(k[:-4].split("-")[-1]))
 
         self.batch_size = batch_size
         self.vocab = vocab
@@ -139,35 +140,76 @@ def set_batch_nodeID(mol_batch, vocab):
 
 
 class FlowDataset(Dataset):
-    def __init__(self, mol_path, property_path, vocab, model, save_path, load=False):
-        sufix = property_path.split("/")[-2] if property_path.endswith("/") else property_path.split("/")[-1]
+    def __init__(
+        self,
+        mol_path,
+        property_path,
+        vocab,
+        model,
+        save_path,
+        use_logvar=False,
+        load=False,
+    ):
+        sufix = (
+            property_path.split("/")[-2]
+            if property_path.endswith("/")
+            else property_path.split("/")[-1]
+        )
+        self.use_logvar = use_logvar
         if load:
             self.W_tree = torch.load(f"{save_path}/W_tree_{sufix}.pt").float()
             self.W_mol = torch.load(f"{save_path}/W_mol_{sufix}.pt").float()
             self.A = torch.load(f"{save_path}/A_{sufix}.pt").float()
+            if use_logvar:
+                self.W_tree_logvar = torch.load(
+                    f"{save_path}/W_tree_logvar_{sufix}.pt"
+                ).float()
+                self.W_mol_logvar = torch.load(
+                    f"{save_path}/W_mol_logvar_{sufix}.pt"
+                ).float()
         else:
             W_tree, W_mol, A = list(), list(), list()
-            loader = MolTreeWithPropertyFolder(mol_path, property_path, vocab, batch_size=32)
+            if use_logvar:
+                W_tree_logvar, W_mol_logvar = list(), list()
+            loader = MolTreeWithPropertyFolder(
+                mol_path, property_path, vocab, batch_size=32
+            )
             model.eval()
             with torch.no_grad():
                 for batch in tqdm(loader):
                     x_batch, a_batch = batch
                     x_batch, x_jtenc_holder, x_mpn_holder, x_jtmpn_holder = x_batch
-                    x_tree_vecs, _, x_mol_vecs = model.encode(x_jtenc_holder, x_mpn_holder)
+                    x_tree_vecs, _, x_mol_vecs = model.encode(
+                        x_jtenc_holder, x_mpn_holder
+                    )
                     W_tree += [model.T_mean(x_tree_vecs)]
                     W_mol += [model.G_mean(x_mol_vecs)]
                     A += [a_batch]
-
+                    if use_logvar:
+                        W_tree_logvar += [model.T_var(x_tree_vecs)]
+                        W_mol_logvar += [model.G_var(x_mol_vecs)]
             del loader
             self.W_tree = torch.cat(W_tree)
             self.W_mol = torch.cat(W_mol)
             self.A = torch.cat(A)
+            self.W_tree_logvar = torch.cat(W_tree_logvar)
+            self.W_mol_logvar = torch.cat(W_mol_logvar)
             torch.save(self.W_tree, f"{save_path}/W_tree_{sufix}.pt")
             torch.save(self.W_mol, f"{save_path}/W_mol_{sufix}.pt")
             torch.save(self.A, f"{save_path}/A_{sufix}.pt")
+            if use_logvar:
+                torch.save(self.W_tree_logvar, f"{save_path}/W_tree_logvar_{sufix}.pt")
+                torch.save(self.W_mol_logvar, f"{save_path}/W_mol_logvar_{sufix}.pt")
 
     def __len__(self):
         return len(self.W_tree)
 
     def __getitem__(self, idx):
-        return self.W_tree[idx], self.W_mol[idx], self.A[idx]
+        if self.use_logvar:
+            return (
+                (self.W_tree[idx], self.W_tree_logvar[idx]),
+                (self.W_mol[idx], self.W_mol_logvar[idx]),
+                self.A[idx],
+            )
+        else:
+            return self.W_tree[idx], self.W_mol[idx], self.A[idx]

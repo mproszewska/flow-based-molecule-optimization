@@ -30,25 +30,34 @@ from flow import (
 )
 
 
-def evaluate(test_dataloader, flow, flow_type, conditional, loss_fn, sigma):
+def evaluate(test_dataloader, flow, flow_type, conditional, use_logvar, loss_fn, sigma):
     device = next(flow.parameters()).device
     test_metrics, test_steps = {}, 0
     with torch.no_grad():
-        for w_tree, w_mol, a in test_dataloader:
+        for w_tree, w_mol, a in test_dataloader: 
+            if use_logvar:
+                w_tree, _ = w_tree
+                w_mol, _ = w_mol
             w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
             w = torch.cat([w_tree, w_mol], dim=1)
             if flow_type == "NICE":
                 z, logdet = flow(w)
             elif flow_type == "CNF":
                 zero_padding = torch.zeros(1, 1, 1, device=device)
-                cond = a.unsqueeze(-1).unsqueeze(-1) if conditional else torch.ones(a.shape[0], 1, 1, 1, device=device)
+                cond = (
+                    a.unsqueeze(-1).unsqueeze(-1)
+                    if conditional
+                    else torch.ones(a.shape[0], 1, 1, 1, device=device)
+                )
                 z, logdet = flow(w.unsqueeze(1), cond, zero_padding)
                 z = z.squeeze(1)
             elif flow_type == "RealNVP" or flow_type == "MAF":
                 z, logdet = flow._transform(w, context=a if conditional else None)
             else:
                 raise ValueError
-            _, metrics = loss_fn(z, logdet) if conditional else loss_fn(z, logdet, a, sigma)
+            _, metrics = (
+                loss_fn(z, logdet) if conditional else loss_fn(z, logdet, a, sigma)
+            )
             test_steps += 1
             for k, v in metrics.items():
                 test_metrics[k] = (
@@ -59,7 +68,7 @@ def evaluate(test_dataloader, flow, flow_type, conditional, loss_fn, sigma):
     return test_steps, test_metrics
 
 
-def main_flow_train( 
+def main_flow_train(
     jtvae_path,
     mol_path,
     property_path,
@@ -77,6 +86,7 @@ def main_flow_train(
     flow_n_blocks=4,
     flow_sigma=1.0,
     flow_sigma_decay=0.98,
+    flow_use_logvar=False,
     lr=1e-3,
     epochs=50,
 ):
@@ -92,7 +102,13 @@ def main_flow_train(
     print(f"Loaded pretrained JTNNVAE from {jtvae_path}")
 
     dataset = FlowDataset(
-        mol_path, property_path, vocab, jtvae, save_path=f"{mol_path}/..", load=True
+        mol_path,
+        property_path,
+        vocab,
+        jtvae,
+        save_path=f"{mol_path}/..",
+        use_logvar=flow_use_logvar,
+        load=True,
     )
     train_data = Subset(dataset, range(0, 240000))
     test_data = Subset(dataset, range(240000, 246400))
@@ -166,7 +182,21 @@ def main_flow_train(
         train_metrics = {}
         curr_flow_sigma = flow_sigma * (flow_sigma_decay ** epoch)
         for w_tree, w_mol, a in tqdm(train_dataloader):
+            if flow_use_logvar:
+                w_tree, w_tree_logvar = w_tree
+                w_mol, w_mol_logvar = w_mol
+
             w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
+            if flow_use_logvar:
+                w_tree_logvar, w_mol_logvar = w_tree_logvar.to(device), w_mol_logvar.to(
+                    device
+                )
+                w_tree = w_tree + torch.randn_like(w_tree_logvar) * torch.exp(
+                    0.5 * w_tree_logvar
+                )
+                w_mol = w_mol + torch.randn_like(w_mol_logvar) * torch.exp(
+                    0.5 * w_mol_logvar
+                )
             w = torch.cat([w_tree, w_mol], dim=1)
             train_steps += 1
             flow.zero_grad()
@@ -198,7 +228,7 @@ def main_flow_train(
                     else metrics[k].item()
                 )
         test_steps, test_metrics = evaluate(
-            test_dataloader, flow, flow_type, conditional, loss_fn, curr_flow_sigma
+            test_dataloader, flow, flow_type, conditional, flow_use_logvar, loss_fn, curr_flow_sigma
         )
         print(f"Epoch: {epoch}")
         print(
@@ -248,6 +278,7 @@ if __name__ == "__main__":
     parser.add_argument("--flow_n_blocks", type=int, default=4)
     parser.add_argument("--flow_sigma", type=float, default=1.0)
     parser.add_argument("--flow_sigma_decay", type=float, default=0.98)
+    parser.add_argument("--flow_use_logvar", action="store_true")
 
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=50)
@@ -255,7 +286,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
 
-    main_flow_train( 
+    main_flow_train(
         args.jtvae_path,
         args.mol_path,
         args.property_path,
@@ -273,6 +304,7 @@ if __name__ == "__main__":
         args.flow_n_blocks,
         args.flow_sigma,
         args.flow_sigma_decay,
+        args.flow_use_logvar,
         args.lr,
         args.epochs,
     )
