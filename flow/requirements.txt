@@ -1,3 +1,4 @@
 python=3.8.12=h12debd9_0
 pytorch=1.7.0=py3.8_cuda11.0.221_cudnn8.0.3_0
-rdkit=2019.09.1=py38hb31dc5d_0
+rdkit=2020.09.5=py38h2bca085_0
+torchdiffeq=0.0.1
