@@ -9,7 +9,8 @@ import argparse
 def plot_hist(results_path):
     property = results_path.split("_")[-4]
     flow_type = results_path.split("/")[1].split("_")[0]
-    results = pd.read_csv(results_path)
+    results = pd.read_csv(results_path).select_dtypes(['number'])
+
     mean, std = calc_summary(results)
     colors = sns.color_palette()
     legend_items = []
@@ -45,5 +46,7 @@ def calc_summary(results):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--results_path", type=str, required=True)
+
 args = parser.parse_args()
+
 plot_hist(args.results_path)
