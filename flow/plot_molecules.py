@@ -22,8 +22,6 @@ def plot_molecules(results_path, value, n=18):
     im.save(output_path)
 
 
-plot_molecules("optimization_results/NICE_logP_set_generate1.0_e100.csv", 3.0)
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--results_path", type=str, required=True)
 parser.add_argument("--value", type=float, required=True)
