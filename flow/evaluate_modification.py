@@ -9,7 +9,7 @@ from fast_jtnn import *
 import rdkit
 from tqdm import tqdm
 
-from scores import calculate_logP
+from scores import *
 from flow import (
     cnf,
     FlowDataset,
@@ -55,8 +55,10 @@ def evaluate_flow(
     dataset = FlowDataset(
         mol_path, property_path, vocab, jtvae, save_path=f"{mol_path}/..", load=True
     )
-    test_data = Subset(dataset, range(246000, 246400))
+    test_data = Subset(dataset, range(240000, 246400))
     test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    property = property_path.split("/")[-2 if property_path.endswith("/") else -1]
+    calculate_stat = {"logP" : calculate_logP, "SAS": calculate_sas, "qed": calculate_qed}[property]
 
     if flow_type == "NICE":
         if conditional:
@@ -158,7 +160,7 @@ def evaluate_flow(
                 else:
                     raise ValueError
                 smiles = jtvae.decode(z_encoded[:, :28], z_encoded[:, 28:], False)
-                logP = calculate_logP(smiles)
+                logP = calculate_stat(smiles)
                 output[str(value)].append(logP)
                 output[f"smiles_{value}"].append(smiles)
 

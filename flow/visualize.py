@@ -33,7 +33,10 @@ def plot_hist(results_path):
     plt.subplots_adjust(bottom=0.1)
 
     plt.legend(handles=legend_items)
-    plt.xlim((-10, 10))
+    if property == "logP": plt.xlim((-10, 10))
+    elif property == "SAS": plt.xlim((-1, 10))
+    elif property == "qed": plt.xlim((0, 1.1))
+    else: raise ValueError
     output_path = results_path.replace(".csv", ".jpg")
     plt.savefig(output_path)
 
