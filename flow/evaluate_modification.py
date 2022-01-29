@@ -55,7 +55,7 @@ def evaluate_flow(
     dataset = FlowDataset(
         mol_path, property_path, vocab, jtvae, save_path=f"{mol_path}/..", load=True
     )
-    test_data = Subset(dataset, range(240000, 246400))
+    test_data = Subset(dataset, range(246000, 246400))
     test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
     if flow_type == "NICE":
@@ -112,6 +112,7 @@ def evaluate_flow(
     get_original_score = not generate
     for value in values:
         output[str(value)] = []
+        output[f"smiles_{value}"] = []
     with torch.no_grad():
         for batch_idx, data in tqdm(
             enumerate(test_dataloader), total=len(test_dataloader)
@@ -159,6 +160,7 @@ def evaluate_flow(
                 smiles = jtvae.decode(z_encoded[:, :28], z_encoded[:, 28:], False)
                 logP = calculate_logP(smiles)
                 output[str(value)].append(logP)
+                output[f"smiles_{value}"].append(smiles)
 
                 if get_original_score:
                     original_score.append(a.item())
@@ -201,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--flow_use_logvar", action="store_true")
     parser.add_argument("--update", action="store_true")
     parser.add_argument("--generate", action="store_true")
-    parser.add_argument("--generate_sigma", type=float, default=1.0)
+    parser.add_argument("--generate_sigma", type=float, default=0.5)
     parser.add_argument("--hidden_size", type=int, default=450)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--latent_size", type=int, default=56)
