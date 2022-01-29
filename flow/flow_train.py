@@ -137,12 +137,12 @@ def main_flow_train(
         zero_padding = torch.zeros(1, 1, 1, device=device)
     elif flow_type == "MAF":
         if conditional:
-            context_features, embedding_features = 1, 10
+            context_features, embedding_features = 1, None
         else:
             context_features, embedding_features = None, None
         flow = MaskedAutoregressiveFlow(
             latent_size,
-            latent_size*4,
+            latent_size,
             context_features,
             embedding_features,
             flow_n_layers,
