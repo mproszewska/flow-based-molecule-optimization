@@ -20,14 +20,16 @@ python flow_train.py  --jtvae ../fast_molvae/save/model.epoch-19 --mol_path ../d
 ```
 
 ## Optimization (modification)
-For now optimization is only possible for logP property.
-To optimize logP run 
+Run 
 ```
-python evaluate_modification.py --flow_path save_logP/flow.epoch-50  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --property_path ../data/zinc250k/logP/
+python evaluate_modification.py --flow_path save_realnvp_cond_logP/flow.epoch-100  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --property_path ../data/zinc250k/logP/ --values -2.0 2.0 --flow_type "RealNVP" --conditional
 ```
 Results will be saved in flow/optimization_results.
 
-To visualize results call plot_hist function from flow/visualize.py.
+To visualize results use flow/visualize.py.
 
 ## Optimization (generation)
 
+```
+python evaluate_modification.py --flow_path save_realnvp_cond_logP/flow.epoch-100  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --property_path ../data/zinc250k/logP/ --values -2.0 2.0 --flow_type "RealNVP" --conditional --generate --generate_sigma 0.5
+```

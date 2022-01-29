@@ -34,7 +34,7 @@ def evaluate(test_dataloader, flow, flow_type, conditional, use_logvar, loss_fn,
     device = next(flow.parameters()).device
     test_metrics, test_steps = {}, 0
     with torch.no_grad():
-        for w_tree, w_mol, a in test_dataloader: 
+        for w_tree, w_mol, a in test_dataloader:
             if use_logvar:
                 w_tree, _ = w_tree
                 w_mol, _ = w_mol
@@ -188,8 +188,9 @@ def main_flow_train(
 
             w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
             if flow_use_logvar:
-                w_tree_logvar, w_mol_logvar = w_tree_logvar.to(device), w_mol_logvar.to(
-                    device
+                w_tree_logvar, w_mol_logvar = (
+                    w_tree_logvar.to(device),
+                    w_mol_logvar.to(device),
                 )
                 w_tree = w_tree + torch.randn_like(w_tree_logvar) * torch.exp(
                     0.5 * w_tree_logvar
@@ -228,7 +229,13 @@ def main_flow_train(
                     else metrics[k].item()
                 )
         test_steps, test_metrics = evaluate(
-            test_dataloader, flow, flow_type, conditional, flow_use_logvar, loss_fn, curr_flow_sigma
+            test_dataloader,
+            flow,
+            flow_type,
+            conditional,
+            flow_use_logvar,
+            loss_fn,
+            curr_flow_sigma,
         )
         print(f"Epoch: {epoch}")
         print(
@@ -281,7 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--flow_use_logvar", action="store_true")
 
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=100)
 
     args = parser.parse_args()
     print(args)
