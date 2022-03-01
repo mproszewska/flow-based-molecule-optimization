@@ -42,23 +42,32 @@ def convert(train_path, properties, pool, num_splits, output_path):
     out_path = os.path.join(output_path, "./")
     if os.path.isdir(out_path) is False:
         os.makedirs(out_path)
-    for subdir in ["mol"] + properties:
+    for subdir in ["mol", "smiles"] + properties:
         subdir_path = os.path.join(out_path, subdir)
         if os.path.isdir(subdir_path) is False:
             os.makedirs(subdir_path)
 
     df = pd.read_csv(train_path)
     smiles = df["smiles"].tolist()
-
-    print("Tensorizing smiles.....")
+    """
+    print("Tensorizing smiles.....", df.shape)
     smiles_data = pool.map(tensorize, smiles)
-    smiles_data_split = np.array_split(smiles_data, num_splits)
-
+    smiiles_data_split = np.array_split(smiles_data, num_splits)
+    
     for split_id in tqdm(range(num_splits)):
         with open(
             os.path.join(output_path, "mol/tensors-%d.pkl" % split_id), "wb"
         ) as f:
             pickle.dump(smiles_data_split[split_id], f)
+    """
+    print("Tensorizing smiles strings.....")
+    smiles_split = np.array_split(smiles, num_splits)
+    for split_id in tqdm(range(num_splits)):
+        with open(
+            os.path.join(output_path, "smiles/tensors-%d.pkl" % (split_id)),
+            "wb",
+        ) as f:
+            pickle.dump(smiles_split[split_id], f)
 
     print("Tensorizing properties.....")
     for property in properties:

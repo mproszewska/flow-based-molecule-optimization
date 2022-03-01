@@ -20,17 +20,14 @@ from tqdm import tqdm
 import os
 
 from flow import (
-    cnf,
+    Flow,
     FlowDataset,
-    MaskedAutoregressiveFlow,
-    NICE,
     N01_loss,
     naive_loss,
-    SimpleRealNVP,
 )
 
 
-def evaluate(test_dataloader, flow, flow_type, conditional, use_logvar, loss_fn, sigma):
+def evaluate(test_dataloader, flow, use_logvar, loss_fn, sigma):
     device = next(flow.parameters()).device
     test_metrics, test_steps = {}, 0
     with torch.no_grad():
@@ -40,23 +37,9 @@ def evaluate(test_dataloader, flow, flow_type, conditional, use_logvar, loss_fn,
                 w_mol, _ = w_mol
             w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
             w = torch.cat([w_tree, w_mol], dim=1)
-            if flow_type == "NICE":
-                z, logdet = flow(w)
-            elif flow_type == "CNF":
-                zero_padding = torch.zeros(1, 1, 1, device=device)
-                cond = (
-                    a.unsqueeze(-1).unsqueeze(-1)
-                    if conditional
-                    else torch.ones(a.shape[0], 1, 1, 1, device=device)
-                )
-                z, logdet = flow(w.unsqueeze(1), cond, zero_padding)
-                z = z.squeeze(1)
-            elif flow_type == "RealNVP" or flow_type == "MAF":
-                z, logdet = flow._transform(w, context=a if conditional else None)
-            else:
-                raise ValueError
+            z, logdet = flow(w, a)
             _, metrics = (
-                loss_fn(z, logdet) if conditional else loss_fn(z, logdet, a, sigma)
+                loss_fn(z, logdet) if flow.conditional else loss_fn(z, logdet, a, sigma)
             )
             test_steps += 1
             for k, v in metrics.items():
@@ -68,8 +51,14 @@ def evaluate(test_dataloader, flow, flow_type, conditional, use_logvar, loss_fn,
     return test_steps, test_metrics
 
 
+def sample_w(w_tree, w_tree_logvar, w_mol, w_mol_logvar):
+    w_tree = w_tree + torch.randn_like(w_tree_logvar) * torch.exp(0.5 * w_tree_logvar)
+    w_mol = w_mol + torch.randn_like(w_mol_logvar) * torch.exp(0.5 * w_mol_logvar)
+    return w_tree, w_mol
+
 def main_flow_train(
     jtvae_path,
+    smiles_path,
     mol_path,
     property_path,
     vocab,
@@ -82,6 +71,7 @@ def main_flow_train(
     depthT=20,
     depthG=3,
     flow_load_epoch=0,
+    flow_latent_size=56,
     flow_n_layers=4,
     flow_n_blocks=4,
     flow_sigma=1.0,
@@ -102,6 +92,7 @@ def main_flow_train(
     print(f"Loaded pretrained JTNNVAE from {jtvae_path}")
 
     dataset = FlowDataset(
+        smiles_path,
         mol_path,
         property_path,
         vocab,
@@ -116,48 +107,14 @@ def main_flow_train(
     test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     del jtvae
 
-    if flow_type == "NICE":
-        if conditional:
-            raise ValueError
-        flow = NICE(
-            input_dim=latent_size,
-            n_layers=flow_n_layers,
-            n_couplings=flow_n_blocks,
-            hidden_dim=latent_size,
-            device=device,
-        ).to(device)
-    elif flow_type == "CNF":
-        flow = cnf(
-            latent_size,
-            "-".join([str(latent_size)] * (flow_n_layers - 1)),
-            1,
-            flow_n_blocks,
-        ).to(device)
-
-        zero_padding = torch.zeros(1, 1, 1, device=device)
-    elif flow_type == "MAF":
-        if conditional:
-            context_features, embedding_features = 1, None
-        else:
-            context_features, embedding_features = None, None
-        flow = MaskedAutoregressiveFlow(
-            latent_size,
-            latent_size,
-            context_features,
-            embedding_features,
-            flow_n_layers,
-            flow_n_blocks,
-        ).to(device)
-    elif flow_type == "RealNVP":
-        if conditional:
-            context_features = 1
-        else:
-            context_features = None
-        flow = SimpleRealNVP(
-            latent_size, latent_size, context_features, flow_n_layers, flow_n_blocks
-        ).to(device)
-    else:
-        raise ValueError
+    flow = Flow(
+        flow_type,
+        conditional,
+        latent_size,
+        flow_latent_size,
+        flow_n_layers,
+        flow_n_blocks,
+    ).to(device)
     print(flow)
 
     optimizer = optim.Adam(flow.parameters(), lr=lr)
@@ -180,48 +137,28 @@ def main_flow_train(
 
         train_steps = 0
         train_metrics = {}
-        curr_flow_sigma = flow_sigma * (flow_sigma_decay ** epoch)
-        for w_tree, w_mol, a in tqdm(train_dataloader):
+        curr_flow_sigma = flow_sigma * (flow_sigma_decay**epoch)
+        for _, w_tree, w_mol, a in tqdm(train_dataloader):
             if flow_use_logvar:
                 w_tree, w_tree_logvar = w_tree
                 w_mol, w_mol_logvar = w_mol
 
             w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
             if flow_use_logvar:
-                w_tree_logvar, w_mol_logvar = (
-                    w_tree_logvar.to(device),
-                    w_mol_logvar.to(device),
-                )
-                w_tree = w_tree + torch.randn_like(w_tree_logvar) * torch.exp(
-                    0.5 * w_tree_logvar
-                )
-                w_mol = w_mol + torch.randn_like(w_mol_logvar) * torch.exp(
-                    0.5 * w_mol_logvar
-                )
+                w_tree, w_mol = sample_w(w_tree, w_tree_logvar.to(device), w_mol, w_mol_logvar.to(device))
+
             w = torch.cat([w_tree, w_mol], dim=1)
             train_steps += 1
             flow.zero_grad()
-            if flow_type == "NICE":
-                z, logdet = flow(w)
-            elif flow_type == "CNF":
-                cond = (
-                    a.unsqueeze(-1).unsqueeze(-1)
-                    if conditional
-                    else torch.ones(a.shape[0], 1, 1, 1, device=device)
-                )
-                z, logdet = flow(w.unsqueeze(1), cond, zero_padding)
-                z = z.squeeze(1)
-                logdet = -logdet  # it's possible that there should be minus
-            elif flow_type == "RealNVP" or flow_type == "MAF":
-                z, logdet = flow._transform(w, context=a if conditional else None)
-            else:
-                raise ValueError
-            if conditional:
+            z, logdet = flow(w, a)
+
+            if flow.conditional:
                 loss, metrics = loss_fn(z, logdet)
             else:
                 loss, metrics = loss_fn(z, logdet, a, curr_flow_sigma)
             loss.backward()
             optimizer.step()
+
             for k, v in metrics.items():
                 train_metrics[k] = (
                     train_metrics[k] + metrics[k].item()
@@ -231,8 +168,6 @@ def main_flow_train(
         test_steps, test_metrics = evaluate(
             test_dataloader,
             flow,
-            flow_type,
-            conditional,
             flow_use_logvar,
             loss_fn,
             curr_flow_sigma,
@@ -262,6 +197,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--jtvae_path", type=str, required=True)
+    parser.add_argument("--smiles_path", required=True)
     parser.add_argument("--mol_path", required=True)
     parser.add_argument("--property_path", required=True)
     parser.add_argument("--vocab", required=True)
@@ -281,6 +217,8 @@ if __name__ == "__main__":
     parser.add_argument("--depthG", type=int, default=3)
 
     parser.add_argument("--flow_load_epoch", type=int, default=0)
+
+    parser.add_argument("--flow_latent_size", type=int, default=56)
     parser.add_argument("--flow_n_layers", type=int, default=4)
     parser.add_argument("--flow_n_blocks", type=int, default=4)
     parser.add_argument("--flow_sigma", type=float, default=1.0)
@@ -296,6 +234,7 @@ if __name__ == "__main__":
     main_flow_train(
         args.jtvae_path,
         args.mol_path,
+        args.smiles_path,
         args.property_path,
         args.vocab,
         args.save_dir,
@@ -307,6 +246,7 @@ if __name__ == "__main__":
         args.depthT,
         args.depthG,
         args.flow_load_epoch,
+        args.flow_latent_size,
         args.flow_n_layers,
         args.flow_n_blocks,
         args.flow_sigma,

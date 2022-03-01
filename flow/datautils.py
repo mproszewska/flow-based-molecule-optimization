@@ -11,17 +11,18 @@ from tqdm import tqdm
 class MolTreeWithPropertyFolder(object):
     def __init__(
         self,
+        smiles_folder,
         mol_folder,
         property_folder,
         vocab,
         batch_size,
         num_workers=4,
-        shuffle=True,
+        shuffle=False,
         assm=True,
         replicate=None,
         with_property=False,
     ):
-
+        self.smiles_folder = smiles_folder
         self.mol_folder = mol_folder
         self.property_folder = property_folder
         self.data_files = [fn for fn in os.listdir(mol_folder)]
@@ -38,18 +39,28 @@ class MolTreeWithPropertyFolder(object):
 
     def __iter__(self):
         for fn in self.data_files:
+            sf = os.path.join(self.smiles_folder, fn)
             mf = os.path.join(self.mol_folder, fn)
             pf = os.path.join(self.property_folder, fn)
 
+            with open(sf, "rb") as f:
+                smiles_data = pickle.load(f)
             with open(mf, "rb") as f:
                 mol_data = pickle.load(f)
             with open(pf, "rb") as f:
                 property_data = pickle.load(f)
 
             if self.shuffle:
-                zipped = list(zip(mol_data, property_data))
+                zipped = list(zip(smiles_data, mol_data, property_data))
                 random.shuffle(zipped)
-                mol_data, property_data = zip(*zipped)
+                smiles_data, mol_data, property_data = zip(*zipped)
+
+            smiles_batches = [
+                    smiles_data[i : i + self.batch_size]
+                    for i in range(0, len(smiles_data), self.batch_size)
+            ]
+            if len(smiles_batches[-1]) < self.batch_size:
+                smiles_batches.pop()
 
             mol_batches = [
                 mol_data[i : i + self.batch_size]
@@ -66,7 +77,7 @@ class MolTreeWithPropertyFolder(object):
                 property_batches.pop()
 
             dataset = MolTreeWithPropertyDataset(
-                mol_batches, property_batches, self.vocab, self.assm
+                smiles_batches, mol_batches, property_batches, self.vocab, self.assm
             )
             dataloader = DataLoader(
                 dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0]
@@ -76,8 +87,10 @@ class MolTreeWithPropertyFolder(object):
                 yield b
 
             del (
+                smiles_data,
                 mol_data,
                 property_data,
+                smiles_batches,
                 mol_batches,
                 property_batches,
                 dataset,
@@ -86,7 +99,8 @@ class MolTreeWithPropertyFolder(object):
 
 
 class MolTreeWithPropertyDataset(Dataset):
-    def __init__(self, mol_data, property_data, vocab, assm=True):
+    def __init__(self, smiles_data, mol_data, property_data, vocab, assm=True):
+        self.smiles_data = smiles_data
         self.mol_data = mol_data
         self.property_data = property_data
         self.vocab = vocab
@@ -99,6 +113,7 @@ class MolTreeWithPropertyDataset(Dataset):
 
     def __getitem__(self, idx):
         return (
+            self.smiles_data[idx],
             tensorize(self.mol_data[idx], self.vocab, assm=self.assm),
             torch.tensor(self.property_data[idx]).unsqueeze(1),
         )
@@ -142,6 +157,7 @@ def set_batch_nodeID(mol_batch, vocab):
 class FlowDataset(Dataset):
     def __init__(
         self,
+        smiles_path,
         mol_path,
         property_path,
         vocab,
@@ -157,31 +173,34 @@ class FlowDataset(Dataset):
         )
         self.use_logvar = use_logvar
         if load:
-            self.W_tree = torch.load(f"{save_path}/W_tree_{sufix}.pt").float()
-            self.W_mol = torch.load(f"{save_path}/W_mol_{sufix}.pt").float()
+            self.S = torch.load(f"{save_path}/S.pt")
+            self.W_tree = torch.load(f"{save_path}/W_tree.pt").float()
+            self.W_mol = torch.load(f"{save_path}/W_mol.pt").float()
             self.A = torch.load(f"{save_path}/A_{sufix}.pt").float()
+
             if use_logvar:
                 self.W_tree_logvar = torch.load(
-                    f"{save_path}/W_tree_logvar_{sufix}.pt"
+                    f"{save_path}/W_tree_logvar.pt"
                 ).float()
                 self.W_mol_logvar = torch.load(
-                    f"{save_path}/W_mol_logvar_{sufix}.pt"
+                    f"{save_path}/W_mol_logvar.pt"
                 ).float()
         else:
-            W_tree, W_mol, A = list(), list(), list()
+            S, W_tree, W_mol, A = list(), list(), list(), list()
             if use_logvar:
                 W_tree_logvar, W_mol_logvar = list(), list()
             loader = MolTreeWithPropertyFolder(
-                mol_path, property_path, vocab, batch_size=32
+                smiles_path, mol_path, property_path, vocab, batch_size=32
             )
             model.eval()
             with torch.no_grad():
                 for batch in tqdm(loader):
-                    x_batch, a_batch = batch
+                    s_batch, x_batch, a_batch = batch
                     x_batch, x_jtenc_holder, x_mpn_holder, x_jtmpn_holder = x_batch
                     x_tree_vecs, _, x_mol_vecs = model.encode(
                         x_jtenc_holder, x_mpn_holder
                     )
+                    S += [s_batch]
                     W_tree += [model.T_mean(x_tree_vecs)]
                     W_mol += [model.G_mean(x_mol_vecs)]
                     A += [a_batch]
@@ -189,27 +208,30 @@ class FlowDataset(Dataset):
                         W_tree_logvar += [model.T_var(x_tree_vecs)]
                         W_mol_logvar += [model.G_var(x_mol_vecs)]
             del loader
+            self.S = np.concatenate(S)
             self.W_tree = torch.cat(W_tree)
             self.W_mol = torch.cat(W_mol)
             self.A = torch.cat(A)
-            self.W_tree_logvar = torch.cat(W_tree_logvar)
-            self.W_mol_logvar = torch.cat(W_mol_logvar)
-            torch.save(self.W_tree, f"{save_path}/W_tree_{sufix}.pt")
-            torch.save(self.W_mol, f"{save_path}/W_mol_{sufix}.pt")
+            torch.save(self.W_tree, f"{save_path}/W_tree.pt")
+            torch.save(self.W_mol, f"{save_path}/W_mol.pt")
             torch.save(self.A, f"{save_path}/A_{sufix}.pt")
+            torch.save(self.S, f"{save_path}/S.pt")
             if use_logvar:
-                torch.save(self.W_tree_logvar, f"{save_path}/W_tree_logvar_{sufix}.pt")
-                torch.save(self.W_mol_logvar, f"{save_path}/W_mol_logvar_{sufix}.pt")
+                self.W_tree_logvar = torch.cat(W_tree_logvar)
+                self.W_mol_logvar = torch.cat(W_mol_logvar)
+                torch.save(self.W_tree_logvar, f"{save_path}/W_tree_logvar.pt")
+                torch.save(self.W_mol_logvar, f"{save_path}/W_mol_logvar.pt")
 
     def __len__(self):
-        return len(self.W_tree)
+        return len(self.S)
 
     def __getitem__(self, idx):
         if self.use_logvar:
             return (
+                self.S[idx],
                 (self.W_tree[idx], self.W_tree_logvar[idx]),
                 (self.W_mol[idx], self.W_mol_logvar[idx]),
-                self.A[idx],
+                self.A[idx]
             )
         else:
-            return self.W_tree[idx], self.W_mol[idx], self.A[idx]
+            return self.S[idx], self.W_tree[idx], self.W_mol[idx], self.A[idx]

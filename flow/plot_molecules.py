@@ -15,8 +15,12 @@ def plot_molecules(results_path, value, n=18):
     molecules = results[f"smiles_{value}"].iloc[idx_sorted]
     values = list(np.around(np.array(values), 4))
 
-    im = Draw.MolsToGridImage([Chem.MolFromSmiles(smi) for smi in molecules], molsPerRow=6, subImgSize=(400, 400),
-                              legends=[str(v) for v in values])
+    im = Draw.MolsToGridImage(
+        [Chem.MolFromSmiles(smi) for smi in molecules],
+        molsPerRow=6,
+        subImgSize=(400, 400),
+        legends=[str(v) for v in values],
+    )
 
     output_path = f"{results_path[:-4]}_mol.png"
     im.save(output_path)

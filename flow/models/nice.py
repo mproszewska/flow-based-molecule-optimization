@@ -55,8 +55,10 @@ class Coupling_layer_NICE(nn.Module):
 
 ## Models
 class NICE(nn.Module):
-    def __init__(self, input_dim, n_layers, n_couplings, hidden_dim, device="cpu"):
+    def __init__(self, input_dim, n_layers, n_couplings, hidden_dim):
         super(NICE, self).__init__()
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.input_dim = input_dim
 
@@ -75,7 +77,7 @@ class NICE(nn.Module):
             z = x.view(-1, self.input_dim).float()
             for layer in self.layers[::-1]:
                 z = layer(z, reverse=True)
-            return z
+            return z, 0
         else:
             logdetJ_ac = 0
             x = x.view(-1, self.input_dim).float()

@@ -7,9 +7,9 @@ import argparse
 
 
 def plot_hist(results_path):
-    property = results_path.split("_")[-4]
+    property = results_path.split("_")[-3]
     flow_type = results_path.split("/")[1].split("_")[0]
-    results = pd.read_csv(results_path).select_dtypes(['number'])
+    results = pd.read_csv(results_path).select_dtypes(["number"])
 
     mean, std = calc_summary(results)
     colors = sns.color_palette()
@@ -25,7 +25,9 @@ def plot_hist(results_path):
         ax.fill_between(xs, 0, ys, facecolor=color, alpha=0.2)
         legend_items.append(
             mpatches.Patch(
-                color=color, alpha=0.8, label=f"{column} (mean={mean[i]:.2f})"
+                color=color,
+                alpha=0.8,
+                label=f"{column}: mean={mean[i]:.2f}, std={std[i]:.2f}",
             )
         )
     ax.set(xlabel=property)
@@ -33,12 +35,17 @@ def plot_hist(results_path):
     plt.subplots_adjust(bottom=0.1)
 
     plt.legend(handles=legend_items)
-    if property == "logP": plt.xlim((-10, 10))
-    elif property == "SAS": plt.xlim((-1, 10))
-    elif property == "qed": plt.xlim((0, 1.1))
-    else: raise ValueError
+    if property == "logP":
+        plt.xlim((-10, 10))
+    elif property == "SAS":
+        plt.xlim((-1, 10))
+    elif property == "qed":
+        plt.xlim((0, 1.1))
+    else:
+        raise ValueError
     output_path = results_path.replace(".csv", ".jpg")
     plt.savefig(output_path)
+    print(f"Saved to {output_path}")
 
 
 def calc_summary(results):

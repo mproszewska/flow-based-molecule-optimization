@@ -3,7 +3,7 @@ from torch.distributions import Normal
 
 
 def naive_loss(z, logdet, mu, sigma):
-    """ First element of z corresponds to property (mu = property value), 
+    """First element of z corresponds to property (mu = property value),
     the rest have N(0,1) distribution"""
     device = z.device
     z_a = z[:, : mu.shape[1]]
@@ -20,7 +20,7 @@ def naive_loss(z, logdet, mu, sigma):
             "-logpz": -logpz,
             "-logp_a": -logp_a.mean(),
             "MSE": torch.mean((z_a - mu) ** 2),
-            "sigma": torch.tensor(sigma)
+            "sigma": torch.tensor(sigma),
         },
     )
 

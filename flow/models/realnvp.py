@@ -24,17 +24,17 @@ class SimpleRealNVP(Flow):
     """
 
     def __init__(
-            self,
-            features,
-            hidden_features,
-            context_features=None,
-            num_layers=5,
-            num_blocks_per_layer=2,
-            use_volume_preserving=False,
-            activation=F.relu,
-            dropout_probability=0.0,
-            batch_norm_within_layers=False,
-            batch_norm_between_layers=False,
+        self,
+        features,
+        hidden_features,
+        context_features=None,
+        num_layers=5,
+        num_blocks_per_layer=2,
+        use_volume_preserving=False,
+        activation=F.relu,
+        dropout_probability=0.0,
+        batch_norm_within_layers=False,
+        batch_norm_between_layers=False,
     ):
 
         if use_volume_preserving:
