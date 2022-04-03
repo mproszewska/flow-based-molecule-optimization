@@ -20,6 +20,7 @@ from tqdm import tqdm
 import os
 
 from flow import (
+    Encoder,
     Flow,
     FlowDataset,
     N01_loss,
@@ -27,19 +28,25 @@ from flow import (
 )
 
 
-def evaluate(test_dataloader, flow, use_logvar, loss_fn, sigma):
+def evaluate(test_dataloader, flow, encoder_a, encoder_sc, use_logvar, loss_fn, sigma):
     device = next(flow.parameters()).device
     test_metrics, test_steps = {}, 0
     with torch.no_grad():
-        for w_tree, w_mol, a in test_dataloader:
+        for _, w_tree, w_mol, sc, a in test_dataloader:
             if use_logvar:
                 w_tree, _ = w_tree
                 w_mol, _ = w_mol
-            w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
+            w_tree, w_mol, sc, a = w_tree.to(device), w_mol.to(device), sc.to(device), a.to(device)
             w = torch.cat([w_tree, w_mol], dim=1)
-            z, logdet = flow(w, a)
+            encoded_a = encoder_a(a)
+            if encoder_sc is not None:
+                encoded_sc = encoder_sc(sc)
+            else: encoded_sc = None
+            z, logdet = flow(w, encoded_a)
             _, metrics = (
-                loss_fn(z, logdet) if flow.conditional else loss_fn(z, logdet, a, sigma)
+                loss_fn(z, logdet, encoded_sc)
+                if flow.conditional
+                else loss_fn(z, logdet, encoded_a, sigma, encoded_sc)
             )
             test_steps += 1
             for k, v in metrics.items():
@@ -56,11 +63,13 @@ def sample_w(w_tree, w_tree_logvar, w_mol, w_mol_logvar):
     w_mol = w_mol + torch.randn_like(w_mol_logvar) * torch.exp(0.5 * w_mol_logvar)
     return w_tree, w_mol
 
+
 def main_flow_train(
     jtvae_path,
     smiles_path,
     mol_path,
-    property_path,
+    scaffold_path,
+    attr_path,
     vocab,
     save_dir,
     flow_type,
@@ -77,6 +86,13 @@ def main_flow_train(
     flow_sigma=1.0,
     flow_sigma_decay=0.98,
     flow_use_logvar=False,
+    encoder_a_identity=False,
+    encoder_a_in_features=1,
+    encoder_a_out_features=None,
+    encoder_a_embedding=False,
+    encoder_sc_in_features=1,
+    encoder_sc_out_features=None,
+    encoder_sc_embedding=False,
     lr=1e-3,
     epochs=50,
 ):
@@ -94,15 +110,18 @@ def main_flow_train(
     dataset = FlowDataset(
         smiles_path,
         mol_path,
-        property_path,
+        scaffold_path,
+        attr_path,
         vocab,
         jtvae,
         save_path=f"{mol_path}/..",
         use_logvar=flow_use_logvar,
         load=True,
     )
-    train_data = Subset(dataset, range(0, 240000))
-    test_data = Subset(dataset, range(240000, 246400))
+    print(f"Size of dataset {len(dataset)}")
+    test_set_size = 6400 if len(dataset) > 240000 else 1000
+    train_data = Subset(dataset, range(0, len(dataset) - test_set_size))
+    test_data = Subset(dataset, range(len(dataset) - test_set_size, len(dataset)))
     train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     del jtvae
@@ -117,7 +136,23 @@ def main_flow_train(
     ).to(device)
     print(flow)
 
-    optimizer = optim.Adam(flow.parameters(), lr=lr)
+
+    encoder_a = Encoder(
+        encoder_a_identity, encoder_a_in_features, encoder_a_out_features, encoder_a_embedding
+    ).to(device) 
+    print(encoder_a)
+
+    if encoder_sc_embedding:
+        encoder_sc = Encoder(
+            False, encoder_sc_in_features, encoder_sc_out_features, encoder_sc_embedding
+        ).to(device)
+        print(encoder_sc)
+        optimizer = optim.Adam(list(flow.parameters()) + list(encoder_a.parameters()) + list(encoder_sc.parameters()), lr=lr)
+    else:
+        encoder_sc = None
+        optimizer = optim.Adam(list(flow.parameters()) + list(encoder_a.parameters()), lr=lr)
+
+
 
     if os.path.isdir(save_dir) is False:
         os.makedirs(save_dir)
@@ -127,6 +162,15 @@ def main_flow_train(
             save_dir + "/flow.epoch-" + str(flow_load_epoch), map_location=device
         )
         flow.load_state_dict(loaded["flow"])
+        if "encoder" in loaded:
+            encoder_a.load_state_dict(loaded["encoder"])
+            encoder_a.eval()
+        if "encoder_a" in loaded:
+            encoder_a.load_state_dict(loaded["encoder_a"])
+            encoder_a.eval()
+        if "encoder_sc" in loaded:
+            encoder_sc.load_state_dict(loaded["encoder_sc"])
+            encoder_sc.eval()
         optimizer.load_state_dict(loaded["optimizer"])
         flow.eval()
 
@@ -138,24 +182,30 @@ def main_flow_train(
         train_steps = 0
         train_metrics = {}
         curr_flow_sigma = flow_sigma * (flow_sigma_decay**epoch)
-        for _, w_tree, w_mol, a in tqdm(train_dataloader):
+        for _, w_tree, w_mol, sc, a in tqdm(train_dataloader):
             if flow_use_logvar:
                 w_tree, w_tree_logvar = w_tree
                 w_mol, w_mol_logvar = w_mol
 
-            w_tree, w_mol, a = w_tree.to(device), w_mol.to(device), a.to(device)
+            w_tree, w_mol, sc, a = w_tree.to(device), w_mol.to(device), sc.to(device), a.to(device)
             if flow_use_logvar:
-                w_tree, w_mol = sample_w(w_tree, w_tree_logvar.to(device), w_mol, w_mol_logvar.to(device))
+                w_tree, w_mol = sample_w(
+                    w_tree, w_tree_logvar.to(device), w_mol, w_mol_logvar.to(device)
+                )
 
             w = torch.cat([w_tree, w_mol], dim=1)
             train_steps += 1
             flow.zero_grad()
-            z, logdet = flow(w, a)
+            encoded_a = encoder_a(a)
+            if encoder_sc is not None:
+                encoded_sc = encoder_sc(sc)
+            else: encoded_sc = None
+            z, logdet = flow(w, encoded_a)
 
             if flow.conditional:
-                loss, metrics = loss_fn(z, logdet)
+                loss, metrics = loss_fn(z, logdet, encoded_sc)
             else:
-                loss, metrics = loss_fn(z, logdet, a, curr_flow_sigma)
+                loss, metrics = loss_fn(z, logdet, encoded_a, curr_flow_sigma, encoded_sc)
             loss.backward()
             optimizer.step()
 
@@ -168,6 +218,8 @@ def main_flow_train(
         test_steps, test_metrics = evaluate(
             test_dataloader,
             flow,
+            encoder_a,
+            encoder_sc,
             flow_use_logvar,
             loss_fn,
             curr_flow_sigma,
@@ -182,9 +234,15 @@ def main_flow_train(
             {k: round(v / test_steps, 3) for k, v in test_metrics.items()},
         )
         sys.stdout.flush()
-
+        save_dict = {
+                "flow": flow.state_dict(),
+                "encoder_a": encoder_a.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            }
+        if encoder_sc is not None:
+            save_dict["encoder_sc"] = encoder_sc.state_dict()
         torch.save(
-            {"flow": flow.state_dict(), "optimizer": optimizer.state_dict()},
+            save_dict,
             save_dir + "/flow.epoch-" + str(epoch + 1),
         )
     return flow
@@ -199,7 +257,8 @@ if __name__ == "__main__":
     parser.add_argument("--jtvae_path", type=str, required=True)
     parser.add_argument("--smiles_path", required=True)
     parser.add_argument("--mol_path", required=True)
-    parser.add_argument("--property_path", required=True)
+    parser.add_argument("--scaffold_path", required=True)
+    parser.add_argument("--attr_path", required=True)
     parser.add_argument("--vocab", required=True)
     parser.add_argument("--save_dir", required=True)
 
@@ -225,17 +284,29 @@ if __name__ == "__main__":
     parser.add_argument("--flow_sigma_decay", type=float, default=0.98)
     parser.add_argument("--flow_use_logvar", action="store_true")
 
+    parser.add_argument("--encoder_a_identity", action="store_true")
+    parser.add_argument("--encoder_a_in_features", type=int, default=1)
+    parser.add_argument("--encoder_a_out_features", type=int, default=None)
+    parser.add_argument("--encoder_a_embedding", action="store_true")
+    
+    parser.add_argument("--encoder_sc_in_features", type=int, default=1)
+    parser.add_argument("--encoder_sc_out_features", type=int, default=None)
+    parser.add_argument("--encoder_sc_embedding", action="store_true")
+
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=100)
 
     args = parser.parse_args()
     print(args)
 
+    assert args.flow_use_logvar
+
     main_flow_train(
         args.jtvae_path,
-        args.mol_path,
         args.smiles_path,
-        args.property_path,
+        args.mol_path,
+        args.scaffold_path,
+        args.attr_path,
         args.vocab,
         args.save_dir,
         args.flow_type,
@@ -252,6 +323,13 @@ if __name__ == "__main__":
         args.flow_sigma,
         args.flow_sigma_decay,
         args.flow_use_logvar,
+        args.encoder_a_identity,
+        args.encoder_a_in_features,
+        args.encoder_a_out_features,
+        args.encoder_a_embedding,
+        args.encoder_sc_in_features,
+        args.encoder_sc_out_features,
+        args.encoder_sc_embedding,
         args.lr,
         args.epochs,
     )

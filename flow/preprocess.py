@@ -18,6 +18,9 @@ import rdkit
 
 
 def tensorize(smiles, assm=True):
+    print(smiles, smiles.__class__)
+    if isinstance(smiles, float) and np.isnan(smiles):
+        smiles = ""
     mol_tree = MolTree(smiles)
     mol_tree.recover()
     if assm:
@@ -42,24 +45,36 @@ def convert(train_path, properties, pool, num_splits, output_path):
     out_path = os.path.join(output_path, "./")
     if os.path.isdir(out_path) is False:
         os.makedirs(out_path)
-    for subdir in ["mol", "smiles"] + properties:
+    for subdir in ["mol", "scaffold_one_hot", "smiles"] + properties:
         subdir_path = os.path.join(out_path, subdir)
         if os.path.isdir(subdir_path) is False:
             os.makedirs(subdir_path)
 
     df = pd.read_csv(train_path)
     smiles = df["smiles"].tolist()
-    """
+    """ 
     print("Tensorizing smiles.....", df.shape)
     smiles_data = pool.map(tensorize, smiles)
-    smiiles_data_split = np.array_split(smiles_data, num_splits)
-    
+    smiles_data_split = np.array_split(smiles_data, num_splits)
+
     for split_id in tqdm(range(num_splits)):
         with open(
             os.path.join(output_path, "mol/tensors-%d.pkl" % split_id), "wb"
         ) as f:
             pickle.dump(smiles_data_split[split_id], f)
     """
+    print("Tensorizing scaffolds.....")
+    scaffold_data = df["scaffold_one_hot"].to_numpy()
+    # scaffold_data = pool.map(tensorize, scaffold)
+    scaffold_data_split = np.array_split(scaffold_data, num_splits)
+
+    for split_id in tqdm(range(num_splits)):
+        with open(
+            os.path.join(output_path, "scaffold_one_hot/tensors-%d.pkl" % split_id),
+            "wb",
+        ) as f:
+            pickle.dump(scaffold_data_split[split_id], f)
+
     print("Tensorizing smiles strings.....")
     smiles_split = np.array_split(smiles, num_splits)
     for split_id in tqdm(range(num_splits)):
@@ -99,11 +114,11 @@ if __name__ == "__main__":
     lg.setLevel(rdkit.RDLogger.CRITICAL)
 
     parser = ArgumentParser()
-    parser.add_argument("-t", "--train", type=str)
-    parser.add_argument("-p", "--properties", nargs="*", type=str)
+    parser.add_argument("-t", "--train", type=str, required=True)
+    parser.add_argument("-p", "--properties", nargs="*", type=str, required=True)
     parser.add_argument("-n", "--split", default=10, type=int)
     parser.add_argument("-j", "--jobs", default=8, type=int)
-    parser.add_argument("-o", "--output", type=str)
+    parser.add_argument("-o", "--output", type=str, required=True)
 
     args = parser.parse_args()
 
