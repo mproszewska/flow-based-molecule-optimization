@@ -17,10 +17,7 @@ def plot_hist(results_path, similarity):
     print(f"Attr {attr}")
     flow_type = results_path.split("/")[1].split("_")[0]
     results = pd.read_csv(results_path)
-    # if "original" in results.columns:
-    #    results = results.drop(columns=["original"])
     results = results.select_dtypes(["number"])
-    print(results)
     cols = [
         col
         for col in results.columns
@@ -28,19 +25,22 @@ def plot_hist(results_path, similarity):
     ]
 
     results = results[cols]
-    print(cols, results)
 
     mean, std = calc_summary(results)
     colors = sns.color_palette()
     legend_items = []
+    plt.rcParams['font.size'] = '20'
+    
 
     cols = [col for col in cols if col != "original"]
-    if attr == "aromatic_rings" and not similarity:
+    if attr in ["aromatic_rings", "scaffold"] and not similarity:
         attr_list, col_list = list(), list()
         for column in cols:
             attr_list += results[column].tolist()
             col_list += [column for _ in results[column]]
         df = pd.DataFrame({attr: attr_list, "value": col_list})
+        
+
         ax = sns.histplot(
             df,
             x=attr,
@@ -51,16 +51,19 @@ def plot_hist(results_path, similarity):
             multiple="dodge",
             shrink=0.8,
         )
+        sns.move_legend(ax, "upper left")
         ax.legend_.set_title(None)
 
     else:
         cols = [col for col in cols if col != "original"]
         for i, column in enumerate(cols):
             value = column.replace("similarity_", "")
-            idx = 1 - np.isclose(results["original"], float(value), atol=5e-1)
-            print(idx.shape, idx.sum())
+            if value != "original" and "original" in results:
+                idx = 1 - np.isclose(results["original"], float(value), atol=0.2)
+            else:
+                idx = np.ones(len(results[value]))
             color = colors[i]
-            ax = sns.kdeplot(results[idx.astype(bool)][column], fill=False, color=color)
+            ax = sns.kdeplot(results[idx.astype(bool)][column], fill=False, color=color) 
             kdeline = ax.lines[i]
             mean, std = calc_summary(results[idx.astype(bool)][column])
             xs = kdeline.get_xdata()
@@ -72,17 +75,18 @@ def plot_hist(results_path, similarity):
                 mpatches.Patch(
                     color=color,
                     alpha=0.8,
-                    label=f"{value}: mean={mean:.2f}, std={std:.2f}",
+                    label=f"{value}" if len(value) == 3 else str(value)
                 )
             )
 
-        ax.legend(handles=legend_items)
-    ax.set(xlabel="similarity" if similarity else attr)
+            i
+        ax.legend(handles=legend_items, loc="upper left")
+    ax.set(xlabel="Similarity" if similarity else attr)
     # plt.title(flow_type)
     plt.subplots_adjust(bottom=0.1)
-
+    plt.tight_layout()
     if attr == "logP":
-        plt.xlim((-10, 10))
+        plt.xlim((-10, 15))
     elif attr == "SAS":
         plt.xlim((-1, 10))
     elif attr == "qed":
@@ -90,7 +94,8 @@ def plot_hist(results_path, similarity):
     elif attr == "aromatic_rings":
         plt.xlim((0, 6))
     else:
-        raise ValueError
+        pass
+        #raise ValueError
     if similarity:
         plt.xlim((-0.1, 1.1))
     output_path = results_path.replace(".csv", ".jpg")

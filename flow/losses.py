@@ -11,7 +11,7 @@ def naive_loss(z, logdet, mu, sigma, mu_rest=None):
     dist_a = Normal(mu, sigma * torch.ones_like(mu, device=device))
     dist_rest = Normal(mu_rest if mu_rest is not None else torch.tensor([0.0]).to(device) , torch.tensor([1.0]).to(device))
     logp_a = dist_a.log_prob(z_a)
-    logp_rest = dist_rest.log_prob(z_rest)
+    logp_rest = dist_rest.log_prob(z_rest) if z_rest.shape[-1] != 0 else torch.tensor([0.0]).to(device)
     logpz = logp_a.sum(-1, keepdim=True) + logp_rest.sum(-1, keepdim=True)
     logpz = (logpz + logdet).mean()
     return (

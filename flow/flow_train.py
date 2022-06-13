@@ -116,7 +116,7 @@ def main_flow_train(
         jtvae,
         save_path=f"{mol_path}/..",
         use_logvar=flow_use_logvar,
-        load=True,
+        load=False,
     )
     print(f"Size of dataset {len(dataset)}")
     test_set_size = 6400 if len(dataset) > 240000 else 1000
@@ -241,10 +241,11 @@ def main_flow_train(
             }
         if encoder_sc is not None:
             save_dict["encoder_sc"] = encoder_sc.state_dict()
-        torch.save(
-            save_dict,
-            save_dir + "/flow.epoch-" + str(epoch + 1),
-        )
+        if (epoch + 1) % 10 == 0:
+            torch.save(
+                save_dict,
+                save_dir + "/flow.epoch-" + str(epoch + 1),
+            )
     return flow
 
 

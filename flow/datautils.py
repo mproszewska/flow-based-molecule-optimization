@@ -209,14 +209,24 @@ class FlowDataset(Dataset):
         if load:
             device = next(model.parameters()).device
             self.S = torch.load(f"{save_path}/S.pt", map_location=device)
-            self.W_tree = torch.load(f"{save_path}/W_tree.pt", map_location=device).float()
-            self.W_mol = torch.load(f"{save_path}/W_mol.pt", map_location=device).float()
+            self.W_tree = torch.load(
+                f"{save_path}/W_tree.pt", map_location=device
+            ).float()
+            self.W_mol = torch.load(
+                f"{save_path}/W_mol.pt", map_location=device
+            ).float()
             self.Sc = torch.load(f"{save_path}/Sc.pt", map_location=device).float()
-            self.A = torch.load(f"{save_path}/A_{sufix}.pt", map_location=device).float()
+            self.A = torch.load(
+                f"{save_path}/A_{sufix}.pt", map_location=device
+            ).float()
 
             if use_logvar:
-                self.W_tree_logvar = torch.load(f"{save_path}/W_tree_logvar.pt", map_location=device).float()
-                self.W_mol_logvar = torch.load(f"{save_path}/W_mol_logvar.pt", map_location=device).float()
+                self.W_tree_logvar = torch.load(
+                    f"{save_path}/W_tree_logvar.pt", map_location=device
+                ).float()
+                self.W_mol_logvar = torch.load(
+                    f"{save_path}/W_mol_logvar.pt", map_location=device
+                ).float()
         else:
             S, W_tree, W_mol, Sc, A = list(), list(), list(), list(), list()
             if use_logvar:
@@ -228,12 +238,12 @@ class FlowDataset(Dataset):
             model.eval()
             with torch.no_grad():
                 for batch in tqdm(loader):
+
                     s_batch, x_batch, sc_batch, a_batch = batch
                     x_batch, x_jtenc_holder, x_mpn_holder, x_jtmpn_holder = x_batch
                     x_tree_vecs, _, x_mol_vecs = model.encode(
                         x_jtenc_holder, x_mpn_holder
                     )
-
                     S += [s_batch]
                     W_tree += [model.T_mean(x_tree_vecs)]
                     W_mol += [model.G_mean(x_mol_vecs)]
@@ -258,19 +268,23 @@ class FlowDataset(Dataset):
                 self.W_mol_logvar = torch.cat(W_mol_logvar)
                 torch.save(self.W_tree_logvar, f"{save_path}/W_tree_logvar.pt")
                 torch.save(self.W_mol_logvar, f"{save_path}/W_mol_logvar.pt")
-        idx = (1 - np.isnan(self.A.cpu())[:, 0]).bool()
-        self.S, self.W_tree, self.W_mol, self.Sc, self.A = (
-            self.S[idx],
-            self.W_tree[idx],
-            self.W_mol[idx],
-            self.Sc[idx],
-            self.A[idx],
-        )
-        if use_logvar:
-            (self.W_tree_logvar, self.W_mol_logvar,) = (
-                self.W_tree_logvar[idx],
-                self.W_mol_logvar[idx],
+        if self.A.shape[-1] == 1:
+            self.A[self.A >= 100] = np.nan
+            print(len(self.A))
+            idx = (1 - np.isnan(self.A.cpu())[:, 0]).bool()
+            self.S, self.W_tree, self.W_mol, self.Sc, self.A = (
+                self.S[idx],
+                self.W_tree[idx],
+                self.W_mol[idx],
+                self.Sc[idx],
+                self.A[idx],
             )
+            print(len(self.A))
+            if use_logvar:
+                (self.W_tree_logvar, self.W_mol_logvar,) = (
+                    self.W_tree_logvar[idx],
+                    self.W_mol_logvar[idx],
+                )
 
     def __len__(self):
         return len(self.S)

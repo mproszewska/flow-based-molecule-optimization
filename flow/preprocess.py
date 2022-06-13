@@ -15,6 +15,9 @@ import pandas as pd
 
 from fast_jtnn import *
 import rdkit
+from rdkit import DataStructs, Chem
+from rdkit.Chem import AllChem
+from rdkit.Chem import MACCSkeys
 
 
 def tensorize(smiles, assm=True):
@@ -45,14 +48,13 @@ def convert(train_path, properties, pool, num_splits, output_path):
     out_path = os.path.join(output_path, "./")
     if os.path.isdir(out_path) is False:
         os.makedirs(out_path)
-    for subdir in ["mol", "scaffold_one_hot", "smiles"] + properties:
+    for subdir in ["mol", "scaffold_one_hot", "smiles", "fingerprint_1024"] + properties:
         subdir_path = os.path.join(out_path, subdir)
         if os.path.isdir(subdir_path) is False:
             os.makedirs(subdir_path)
 
     df = pd.read_csv(train_path)
     smiles = df["smiles"].tolist()
-    """ 
     print("Tensorizing smiles.....", df.shape)
     smiles_data = pool.map(tensorize, smiles)
     smiles_data_split = np.array_split(smiles_data, num_splits)
@@ -62,10 +64,9 @@ def convert(train_path, properties, pool, num_splits, output_path):
             os.path.join(output_path, "mol/tensors-%d.pkl" % split_id), "wb"
         ) as f:
             pickle.dump(smiles_data_split[split_id], f)
-    """
+    
     print("Tensorizing scaffolds.....")
     scaffold_data = df["scaffold_one_hot"].to_numpy()
-    # scaffold_data = pool.map(tensorize, scaffold)
     scaffold_data_split = np.array_split(scaffold_data, num_splits)
 
     for split_id in tqdm(range(num_splits)):
@@ -83,6 +84,23 @@ def convert(train_path, properties, pool, num_splits, output_path):
             "wb",
         ) as f:
             pickle.dump(smiles_split[split_id], f)
+    
+    print("Extracting and tensorizing fingerprints.....")
+    fingerprint_data = np.empty((len(smiles), 1024), dtype=np.int8)
+    for i, s in enumerate(smiles):
+        #fp = MACCSkeys.GenMACCSKeys(Chem.MolFromSmiles(s))
+        fp = AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(s), 2, nBits=1024)
+        arr = np.zeros((0,), dtype=np.int8) 
+        DataStructs.ConvertToNumpyArray(fp, arr)
+        fingerprint_data[i] = arr
+    fingerprint_data_split = np.array_split(fingerprint_data, num_splits)
+
+    for split_id in tqdm(range(num_splits)):
+        with open(
+            os.path.join(output_path, "fingerprint_1024/tensors-%d.pkl" % split_id),
+            "wb",
+        ) as f:
+            pickle.dump(fingerprint_data_split[split_id], f)
 
     print("Tensorizing properties.....")
     for property in properties:
