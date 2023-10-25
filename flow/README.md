@@ -5,24 +5,24 @@ Code is based on [FastJTNNpy3](https://github.com/Bibyutatsu/FastJTNNpy3).
 Download model from [here](https://drive.google.com/file/d/1Ut1c_3kDBrKviM5IUGii2sqvwVHeARRP/view?usp=sharing) to `fast_molvae/save`.
 
 ## Dataset
-Download zinc250k from [here](https://drive.google.com/file/d/1qr32WASlIIVIbTm4x8XXqZiH2HlqTq2M/view?usp=sharing) and unzip to `data/zinc250k`.
+Download zinc250k from [here](https://drive.google.com/file/d/1K6wNJzoq5Qw1ZXj_u6PKPAwjLIz-dFCl/view?usp=sharing) and unzip to `data/zinc250k`.
 
 ## Flow training
 To train flow for logP optimization, run
 ```
-python flow_train.py  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --attr_path ../data/zinc250k/logP/  --save_dir save_logP --flow_type NICE --scaffold_path zinc250k_220323/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k_220323/smiles/
+python flow_train.py  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --attr_path ../data/zinc250k/logP/  --save_dir save_logP --flow_type NICE --scaffold_path zinc250k/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k/smiles/
 ```
 
 ### CNF training
 To train CNF for logP optimization, run
 ```
-python flow_train.py  --jtvae ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --attr_path ../data/zinc250k/logP/ --vocab ../data/zinc250k/vocab.txt  --save_dir save_cnf_logP_b1  --flow_type CNF --epochs 10 --flow_sigma_decay 0.8 --flow_n_blocks 1 --scaffold_path zinc250k_220323/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k_220323/smiles/
+python flow_train.py  --jtvae ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --attr_path ../data/zinc250k/logP/ --vocab ../data/zinc250k/vocab.txt  --save_dir save_cnf_logP_b1  --flow_type CNF --epochs 10 --flow_sigma_decay 0.8 --flow_n_blocks 1 --scaffold_path zinc250k/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k/smiles/
 ```
 
 ## Optimization (modification)
 Run 
 ``` 
-python flow_evaluate.py --flow_path save_logP/flow.epoch-100  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --attr_path ../data/zinc250k/logP/ --values 1.5 3.0 4.5 --flow_type NICE --scaffold_path zinc250k_220323/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k_220323/smiles/
+python flow_evaluate.py --flow_path save_logP/flow.epoch-100  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --attr_path ../data/zinc250k/logP/ --values 1.5 3.0 4.5 --flow_type NICE --scaffold_path zinc250k/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k/smiles/
 ```
 
 To visualize results use flow/visualize.py.
@@ -31,7 +31,7 @@ To visualize results use flow/visualize.py.
 
 ```
 
-python flow_evaluate.py --flow_path save_logP/flow.epoch-100  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --attr_path ../data/zinc250k/logP/ --values 1.5 3.0 4.5 --flow_type NICE --scaffold_path zinc250k_220323/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k_220323/smiles/ --generate flow --generate_sigma 0.5
+python flow_evaluate.py --flow_path save_logP/flow.epoch-100  --jtvae_path ../fast_molvae/save/model.epoch-19 --mol_path ../data/zinc250k/mol/ --vocab ../data/zinc250k/vocab.txt  --attr_path ../data/zinc250k/logP/ --values 1.5 3.0 4.5 --flow_type NICE --scaffold_path zinc250k/scaffold_one_hot/ --flow_use_logvar --encoder_a_identity --smiles_path zinc250k/smiles/ --generate flow --generate_sigma 0.5
 ```
 
 ## Preprocess dataset
